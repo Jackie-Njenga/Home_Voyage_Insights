@@ -1,0 +1,123 @@
+#PREDICTIONS  UPDATED 2024/11/21
+
+!pip install pycaret
+!pip freeze | grep pycaret
+
+#DATA DISCROVERY
+from google.colab import sheets
+!pip install pandas-gbq
+import pandas as pd
+import numpy as np
+from pandas_gbq import read_gbq
+
+#IMPORT DATA
+project_id = 'dazzling-howl-434723-c6123789456'
+dataset = 'home_voyage'
+table = 'predictions_table'query = f'SELECT * FROM `{project_id}.{dataset}.{table}`'
+df = pd.read_gbq(query, project_id=project_id)
+
+#missing values
+df.head()
+df.info()
+df.shape
+df.isnull().sum()
+
+df.isnull().sum()
+df['renewed_in_last_year'].value_counts()
+df.drop(columns=['user_id'], inplace=True)
+
+#FEATURE ENGINEERING
+
+num_renewals = df['num_renewals'].nunique()
+num_renewals_list = df['num_renewals'].unique().tolist()
+print(f"There are {num_renewals} categories for renewal.\nThese are {num_renewals_list}")
+df['num_renewals'].value_counts()
+import plotly.express as px
+
+px.histogram(df, x='num_renewals', color='num_renewals')
+is_renewed = df.groupby(['num_renewals'])['renewed_in_last_year'].mean()
+
+is_renewed
+
+
+px.bar(is_renewed, range_y=[0,1], labels={'value':'renewal probability'})
+
+CT = pd.crosstab(index=df['num_renewals'], columns=df['guest_num_exchanges'])
+CT
+
+import scipy.stats as stats
+
+# Perform Chi-squared test
+chiRes = stats.chi2_contingency(CT)
+
+# Print out the p-value
+print(f'p-value: {chiRes[1]}')
+
+px.box(df, x="guest_num_exchanges", color = 'num_renewals')
+
+df.head()
+
+#MODELING
+
+columns_to_keep = ['guest_num_conversations',	'guest_num_exchanges',	'guest_num_creator','guest_num_finalized','guest_num_cancelled','guest_avg_stay','guest_num_guests','guest_night_count','guest_num_is_cancellor','num_transactions','num_renewals',
+   'months_on_he', 'is_referred', 'is_promotion','renewed_in_last_year']
+dataset = df[columns_to_keep]
+
+dataset.head()
+
+from sklearn.model_selection import train_test_split
+
+train, test = train_test_split(dataset
+                               ,test_size=0.2
+                               ,stratify=dataset["renewed_in_last_year"])
+
+from sklearn.linear_model import LogisticRegression
+
+X_train = train.drop(columns="renewed_in_last_year")
+X_test = test.drop(columns='renewed_in_last_year')
+
+y_train = train['renewed_in_last_year']
+y_test = test['renewed_in_last_year']
+
+simple_log_model = LogisticRegression()
+
+simple_log_model.fit(X_train, y_train)
+
+from sklearn.metrics import accuracy_score
+
+y_pred = simple_log_model.predict(X_test)
+simple_log_accuracy = accuracy_score(y_test, y_pred)
+
+# OR, more simply:
+# simple_log_accuracy = simple_log_model.score(X_test, y_test)
+
+simple_log_accuracy
+
+from sklearn.metrics import recall_score
+
+simple_log_recall = recall_score(y_test, y_pred)
+
+simple_log_recall
+
+from pycaret.classification import setup
+
+xp = setup(data = train,
+           test_data = test,
+           target = 'renewed_in_last_year',
+           normalize = True,
+           session_id = 42)
+
+from pycaret.classification import compare_models
+
+best_model = compare_models()
+
+from pycaret.classification import plot_model
+
+plot_model(best_model, plot='confusion_matrix')
+
+from pycaret.classification import tune_model
+
+best_model_tuned = tune_model(best_model)
+best_model_tuned.get_params()
+
+plot_model(best_model,'feature')
