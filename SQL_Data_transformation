@@ -1,0 +1,79 @@
+--#DATA EXPLORATION AND TRANSFORMATION _ SQL USING BIGQUERY_ HOME VOYAGE
+--## Gain insights and deliver metrics on KPIs.
+
+--##date transformation: USE COUNTM COUNTIF, WHERE, GROUPBY AND ORDER BY
+SELECT
+(EXTRACT(YEAR FROM subscription_date)) AS year,
+renew,
+country,
+COUNTIF((EXTRACT(YEAR FROM first_subscription_date)) = (EXTRACT(YEAR FROM subscription_date))) AS scd_renwal,
+COUNT (DISTINCT user_id) AS  nb_users,
+FROM `dazzling-howl-434723-c6.home_voyage.subscriptions_clean_1`
+WHERE renew = 1
+GROUP BY (EXTRACT(YEAR FROM subscription_date)), renew, country
+ORDER BY year, renew, scd_renwal DESC
+LIMIT 10
+
+--###Data segmentation. USE WHEN....NULL...ELSE
+
+WITH exchanges_by_region AS (SELECT 
+exchange_id,
+country,
+CASE
+ WHEN finalized_at is null THEN 0
+ WHEN finalized_at is not null THEN 1
+ ELSE 2
+END AS completed_exchange
+FROM `dazzling-howl-434723-c6.home_voyage.Left_join_on_user_id_clean_tables`)
+SELECT 
+SUM(completed_exchange) AS sum_of_completed_exchanges,
+country,
+FROM exchanges_by_region
+GROUP BY country
+ORDER BY sum_of_completed_exchanges DESC
+LIMIT 20
+
+
+--##Unique values
+SELECT 
+country,
+COUNT(*) AS row_count
+FROM `dazzling-howl-434723-c6.home_exchange.voyage_clean_1` 
+GROUP BY 
+country
+HAVING
+row_count > 1
+
+
+--###data tranformation....numerical values to seasons and aggregating the data
+
+WITH exchanges_by_season AS (
+    SELECT 
+        exchange_id,
+        start_on,
+        DATE_TRUNC(start_on, MONTH) AS month_start,
+        CASE
+            WHEN finalized_at IS NULL THEN 0
+            WHEN finalized_at IS NOT NULL THEN 1
+            ELSE 2
+        END AS completed_exchange,
+        CASE
+            WHEN EXTRACT(MONTH FROM start_on) BETWEEN 3 AND 5 THEN 'Spring'
+            WHEN EXTRACT(MONTH FROM start_on) BETWEEN 6 AND 8 THEN 'Summer'
+            WHEN EXTRACT(MONTH FROM start_on) BETWEEN 9 AND 11 THEN 'Autumn'
+            WHEN EXTRACT(MONTH FROM start_on) = 12 THEN 'Winter'
+            WHEN EXTRACT(MONTH FROM start_on) = 1 THEN 'Winter'
+            WHEN EXTRACT(MONTH FROM start_on) = 2 THEN 'Winter'            ELSE 'Outside Range'
+        END AS season_status
+    FROM `dazzling-howl-434723-c6.home_voyage.Left_join_on_user_id_clean_tables`
+)
+SELECT 
+    SUM(completed_exchange) AS sum_of_completed_exchanges,
+    COUNT(exchange_id) AS number_of_exchanges_initiated,
+    season_status,
+    SUM(completed_exchange) / COUNT(exchange_id) * 100 AS ratio_percentage_of_completed_exchanges
+FROM exchanges_by_season
+GROUP BY season_status
+HAVING sum_of_completed_exchanges > 0
+-- HAVING number_of_exchanges_initiated > 10000
+ORDER BY ratio_percentage_of_completed_exchanges DESC;
